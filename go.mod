@@ -1,4 +1,4 @@
-module github.com/olyro.de/tt
+module github.com/olyro/tt
 
 go 1.24.1
 
