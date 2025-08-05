@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math"
 	"strconv"
 	"strings"
 
@@ -58,7 +59,7 @@ func (m model) GetRowNrColumnWidth() int {
 
 func (m model) GetNrOfVisibleColumns() int {
 	rowNrColumnWidth := m.GetRowNrColumnWidth()
-	return (m.width - rowNrColumnWidth - 1) / (m.columnWidth + 1)
+	return int(math.Ceil(float64(m.width-rowNrColumnWidth-1) / float64(m.columnWidth+1)))
 }
 
 func (m model) Init() tea.Cmd {
@@ -225,16 +226,20 @@ func (m model) View() string {
 
 	height := m.GetNrOfVisibleRows()
 
+	rowNumberWidth := m.GetRowNrColumnWidth()
+	visibleColumns := m.GetNrOfVisibleColumns()
+
 	for i := range height {
 		i = i + m.offsetY
 		widths := make([]int, m.GetNrOfVisibleColumns()+1)
 
-		for j := 0; j <= m.GetNrOfVisibleColumns(); j++ {
-			if j == 0 {
-				widths[j] = m.GetRowNrColumnWidth()
-			} else if j == m.GetNrOfVisibleColumns() {
-				widths[j] = m.columnWidth - 1
-			} else {
+		for j := 0; j <= visibleColumns; j++ {
+			switch j {
+			case 0:
+				widths[j] = rowNumberWidth
+			case visibleColumns:
+				widths[j] = max(m.width-rowNumberWidth-1-(visibleColumns-1)*(m.columnWidth+1)-2, 1) // last column
+			default:
 				widths[j] = m.columnWidth // data columns
 			}
 		}
