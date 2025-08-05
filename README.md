@@ -1,6 +1,6 @@
 # Table TUI
 
-Table TUI `tt` s a Terminal User Interface (TUI) for editing Microsoft Excel
+Table TUI `tt` is a Terminal User Interface (TUI) for editing Microsoft Excel
 files, inspired by Vim key bindings. It deviates from vim in a couple of places
 (see the Key Bindings section).
 
@@ -26,7 +26,7 @@ files, inspired by Vim key bindings. It deviates from vim in a couple of places
 Get the binary via `go install`
 
 ```bash
-go install github.com/olyro/table-tui
+go install github.com/olyro/tt
 ```
 
 or check out the repository and build it from source

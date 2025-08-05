@@ -1,4 +1,4 @@
-module olyro.de/table-tui
+module github.com/olyro.de/tt
 
 go 1.24.1
 
