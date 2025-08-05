@@ -26,7 +26,7 @@ files, inspired by Vim key bindings. It deviates from vim in a couple of places
 Get the binary via `go install`
 
 ```bash
-go install github.com/olyro/tt
+go install github.com/olyro/tt@latest
 ```
 
 or check out the repository and build it from source
