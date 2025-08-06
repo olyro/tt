@@ -49,19 +49,19 @@ tt file.xlsx
 
 ### Navigation
 
-| Key           | Description          |
-| ------------- | -------------------- |
-| `h`, `←`, `b` | Move left            |
-| `j`, `↓`, `w` | Move down            |
-| `k`, `↑`      | Move up              |
-| `l`, `→`      | Move right           |
-| `0`           | Go to line beginning |
-| `$`           | Go to line end       |
-| `gg`          | Go to file beginning |
-| `G`           | Go to file end       |
-| `[Num]G`      | Jump to line [Num]   |
-| `Ctrl+d`      | Move page down       |
-| `Ctrl+u`      | Move page up         |
+| Key           | Description         |
+| ------------- | ------------------- |
+| `h`, `←`, `b` | Move left           |
+| `j`, `↓`, `w` | Move down           |
+| `k`, `↑`      | Move up             |
+| `l`, `→`      | Move right          |
+| `0`           | Go to row beginning |
+| `$`           | Go to row end       |
+| `gg`          | Go to first row     |
+| `G`           | Go to last row      |
+| `[Num]G`      | Jump to row [Num]   |
+| `Ctrl+d`      | Move page down      |
+| `Ctrl+u`      | Move page up        |
 
 ### Editing
 
