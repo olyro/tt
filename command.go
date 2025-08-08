@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/xuri/excelize/v2"
 )
 
 func (m model) evaluateInput(input string) (string, model, tea.Cmd) {
@@ -122,6 +123,26 @@ func (m model) evaluateInput(input string) (string, model, tea.Cmd) {
 		}
 
 		return "written", m, nil
+	}
+
+	if inputs[0] == "format" {
+		address, err := excelize.CoordinatesToCellName(m.cursorX+1, m.cursorY+1)
+
+		if err != nil {
+			return "Error getting cell address: " + err.Error(), m, nil
+		}
+
+		styleIdx, err := m.excelFile.GetCellStyle(m.sheetName, address)
+		if err != nil {
+			return "Error getting cell style: " + err.Error(), m, nil
+		}
+		style, err := m.excelFile.GetStyle(styleIdx)
+
+		if err != nil {
+			return "Error getting cell style: " + err.Error(), m, nil
+		}
+
+		return strconv.Itoa(style.NumFmt), m, nil
 	}
 
 	return "Unknown Operation: " + inputs[0], m, nil

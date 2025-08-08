@@ -35,8 +35,8 @@ func handleKeyboardEvent(m model, msg tea.KeyMsg) (model, tea.Cmd) {
 			m.input.Reset()
 			m.input.Focus()
 			m.mode = Command
+			return m, nil
 		}
-		return m, nil
 	case "/":
 		if !m.useInput {
 			m.input.Prompt = "/"
@@ -44,8 +44,8 @@ func handleKeyboardEvent(m model, msg tea.KeyMsg) (model, tea.Cmd) {
 			m.input.Reset()
 			m.input.Focus()
 			m.mode = Search
+			return m, nil
 		}
-		return m, nil
 	case "enter":
 		if m.useInput {
 			m.useInput = false

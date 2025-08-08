@@ -4,6 +4,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -157,6 +158,20 @@ func (m model) IsPartOfMergeCell(x, y int) (bool, bool) {
 func (m model) setCellValue(sheetName, address, value string) error {
 	if value == "" {
 		return m.excelFile.SetCellValue(sheetName, address, nil)
+	}
+
+	// if starts with ' remove prefix and set string
+	if strings.HasPrefix(value, "'") {
+		value = strings.TrimPrefix(value, "'")
+		return m.excelFile.SetCellValue(sheetName, address, value)
+	}
+
+	if parsedTime, err := time.Parse(time.DateTime, value); err == nil {
+		return m.excelFile.SetCellValue(sheetName, address, parsedTime)
+	}
+
+	if parsedDuration, err := time.ParseDuration(value); err == nil {
+		return m.excelFile.SetCellValue(sheetName, address, parsedDuration)
 	}
 
 	if parsedFloat, err := strconv.ParseFloat(value, 64); err == nil {
