@@ -428,6 +428,19 @@ func handleKeyboardEvent(m model, msg tea.KeyMsg) (model, tea.Cmd) {
 			newModel.pushOp(op)
 			m = newModel
 		}
+	case "x":
+		if !m.useInput {
+			op := &clearOperation{}
+			op.Init(m)
+			newModel, err := op.Do(m)
+			if err != nil {
+				newModel.input.SetValue(err.Error())
+			} else {
+				newModel.pushOp(op)
+			}
+			newModel.resetToCellSelection()
+			m = newModel
+		}
 	case "ctrl+d":
 		if !m.useInput {
 			m.offsetY += m.GetNrOfVisibleRows() - 1

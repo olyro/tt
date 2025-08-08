@@ -404,3 +404,43 @@ func (m *unmergeOperation) Undo(model model) (model, error) {
 
 	return model, nil
 }
+
+type clearOperation struct {
+	oldValues map[string]string
+	sheetName string
+}
+
+func (c *clearOperation) Init(m model) error {
+	c.sheetName = m.sheetName
+	c.oldValues = make(map[string]string)
+
+	for _, address := range m.getSelectedCellAddresses() {
+		value, err := m.excelFile.GetCellValue(c.sheetName, address, excelize.Options{RawCellValue: true})
+		if err != nil {
+			return err
+		}
+		c.oldValues[address] = value
+	}
+
+	return nil
+}
+
+func (c *clearOperation) Do(m model) (model, error) {
+	for address := range c.oldValues {
+		if err := m.excelFile.SetCellValue(c.sheetName, address, nil); err != nil {
+			return m, err
+		}
+	}
+
+	return m, nil
+}
+
+func (c *clearOperation) Undo(m model) (model, error) {
+	for address, oldValue := range c.oldValues {
+		if err := m.setCellValue(c.sheetName, address, oldValue); err != nil {
+			return m, err
+		}
+	}
+
+	return m, nil
+}
