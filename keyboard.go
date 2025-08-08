@@ -428,6 +428,19 @@ func handleKeyboardEvent(m model, msg tea.KeyMsg) (model, tea.Cmd) {
 			newModel.pushOp(op)
 			m = newModel
 		}
+	case "d":
+		if !m.useInput {
+			op := &deleteOperation{}
+			op.Init(m)
+			newModel, err := op.Do(m)
+			if err != nil {
+				newModel.input.SetValue(err.Error())
+			} else {
+				newModel.pushOp(op)
+			}
+			newModel.resetToCellSelection()
+			m = newModel
+		}
 	case "x":
 		if !m.useInput {
 			op := &clearOperation{}

@@ -444,3 +444,163 @@ func (c *clearOperation) Undo(m model) (model, error) {
 
 	return m, nil
 }
+
+type deleteOperation struct {
+	sheetName     string
+	selectionKind selectionType
+
+	// For Cell/Block selections
+	oldValues map[string]string
+
+	// For Rows/Columns selections
+	rowsStart     int
+	rowsEnd       int
+	colsStart     int
+	colsEnd       int
+	savedValues   map[string]string
+	savedStyles   map[string]int
+	savedCellType map[string]excelize.CellType
+}
+
+func (d *deleteOperation) Init(m model) error {
+	d.sheetName = m.sheetName
+	d.selectionKind = m.selection.kind
+
+	switch m.selection.kind {
+	case CellSelect, BlockSelect:
+		d.oldValues = make(map[string]string)
+		for _, address := range m.getSelectedCellAddresses() {
+			value, err := m.excelFile.GetCellValue(d.sheetName, address, excelize.Options{RawCellValue: true})
+			if err != nil {
+				return err
+			}
+			d.oldValues[address] = value
+		}
+	case RowsSelect:
+		d.rowsStart = min(m.selection.rows.start, m.selection.rows.end)
+		d.rowsEnd = max(m.selection.rows.start, m.selection.rows.end)
+		d.savedValues = make(map[string]string)
+		d.savedStyles = make(map[string]int)
+		d.savedCellType = make(map[string]excelize.CellType)
+		for _, address := range m.getSelectedCellAddresses() {
+			value, err := m.excelFile.GetCellValue(d.sheetName, address, excelize.Options{RawCellValue: true})
+			if err != nil {
+				return err
+			}
+			d.savedValues[address] = value
+			style, err := m.excelFile.GetCellStyle(d.sheetName, address)
+			if err != nil {
+				return err
+			}
+			d.savedStyles[address] = style
+			cellType, err := m.excelFile.GetCellType(d.sheetName, address)
+			if err != nil {
+				return err
+			}
+			d.savedCellType[address] = cellType
+		}
+	case ColumnsSelect:
+		d.colsStart = min(m.selection.columns.start, m.selection.columns.end)
+		d.colsEnd = max(m.selection.columns.start, m.selection.columns.end)
+		d.savedValues = make(map[string]string)
+		d.savedStyles = make(map[string]int)
+		d.savedCellType = make(map[string]excelize.CellType)
+		for _, address := range m.getSelectedCellAddresses() {
+			value, err := m.excelFile.GetCellValue(d.sheetName, address, excelize.Options{RawCellValue: true})
+			if err != nil {
+				return err
+			}
+			d.savedValues[address] = value
+			style, err := m.excelFile.GetCellStyle(d.sheetName, address)
+			if err != nil {
+				return err
+			}
+			d.savedStyles[address] = style
+			cellType, err := m.excelFile.GetCellType(d.sheetName, address)
+			if err != nil {
+				return err
+			}
+			d.savedCellType[address] = cellType
+		}
+	}
+
+	return nil
+}
+
+func (d *deleteOperation) Do(m model) (model, error) {
+	switch d.selectionKind {
+	case CellSelect, BlockSelect:
+		for address := range d.oldValues {
+			if err := m.excelFile.SetCellValue(d.sheetName, address, nil); err != nil {
+				return m, err
+			}
+		}
+	case RowsSelect:
+		count := d.rowsEnd - d.rowsStart + 1
+		for i := 0; i < count; i++ {
+			if err := m.excelFile.RemoveRow(d.sheetName, d.rowsStart+1); err != nil {
+				return m, err
+			}
+		}
+	case ColumnsSelect:
+		count := d.colsEnd - d.colsStart + 1
+		for i := 0; i < count; i++ {
+			colName, err := excelize.ColumnNumberToName(d.colsStart + 1)
+			if err != nil {
+				return m, err
+			}
+			if err := m.excelFile.RemoveCol(d.sheetName, colName); err != nil {
+				return m, err
+			}
+		}
+	}
+
+	return m, nil
+}
+
+func (d *deleteOperation) Undo(m model) (model, error) {
+	switch d.selectionKind {
+	case CellSelect, BlockSelect:
+		for address, oldValue := range d.oldValues {
+			if err := m.setCellValue(d.sheetName, address, oldValue); err != nil {
+				return m, err
+			}
+		}
+	case RowsSelect:
+		count := d.rowsEnd - d.rowsStart + 1
+		if err := m.excelFile.InsertRows(d.sheetName, d.rowsStart+1, count); err != nil {
+			return m, err
+		}
+		for address, value := range d.savedValues {
+			if err := m.setCellValue(d.sheetName, address, value); err != nil {
+				return m, err
+			}
+			if style, ok := d.savedStyles[address]; ok {
+				if err := m.excelFile.SetCellStyle(d.sheetName, address, address, style); err != nil {
+					return m, err
+				}
+			}
+		}
+	case ColumnsSelect:
+		count := d.colsEnd - d.colsStart + 1
+		colName, err := excelize.ColumnNumberToName(d.colsStart + 1)
+		if err != nil {
+			return m, err
+		}
+		if err := m.excelFile.InsertCols(d.sheetName, colName, count); err != nil {
+			return m, err
+		}
+		for address, value := range d.savedValues {
+			if err := m.setCellValue(d.sheetName, address, value); err != nil {
+				return m, err
+			}
+			if style, ok := d.savedStyles[address]; ok {
+				if err := m.excelFile.SetCellStyle(d.sheetName, address, address, style); err != nil {
+					return m, err
+				}
+			}
+		}
+	}
+
+	return m, nil
+}
