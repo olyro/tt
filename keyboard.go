@@ -67,13 +67,13 @@ func handleKeyboardEvent(m model, msg tea.KeyMsg) (model, tea.Cmd) {
 			} else if m.mode == Command {
 				message, newModel, cmd = m.evaluateInput(m.input.Value())
 				newModel.input.SetValue(message)
-				newModel.input.Prompt = ""
 			} else if m.mode == Search {
 				searchQuery := m.input.Value()
 				newModel = m.SearchIterator(searchQuery, true)
 				newModel.searchQuery = searchQuery
 			}
 			m = newModel
+			m.input.Prompt = ""
 			m.resetToCellSelection()
 			m.input.Blur()
 			m.mode = Normal

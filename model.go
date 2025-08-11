@@ -86,10 +86,17 @@ func (m *model) UpdateValuePrompt() {
 	address, err := excelize.CoordinatesToCellName(m.cursorX+1, m.cursorY+1)
 
 	if err == nil {
-		value, err := m.excelFile.GetCellValue(m.sheetName, address)
+		if cellType, err := m.excelFile.GetCellType(m.sheetName, address); err == nil && cellType == excelize.CellTypeFormula {
+			formula, err := m.excelFile.GetCellFormula(m.sheetName, address)
+			if err == nil {
+				m.input.SetValue(formula)
+			}
+		} else {
+			value, err := m.excelFile.GetCellValue(m.sheetName, address)
 
-		if err == nil {
-			m.input.SetValue(value)
+			if err == nil {
+				m.input.SetValue(value)
+			}
 		}
 	}
 }
@@ -180,6 +187,11 @@ func (m model) setCellValue(sheetName, address, value string) error {
 
 	if parsedInt, err := strconv.Atoi(value); err == nil {
 		return m.excelFile.SetCellValue(sheetName, address, parsedInt)
+	}
+
+	// if the value starts with =, set as formula
+	if strings.HasPrefix(value, "=") {
+		return m.excelFile.SetCellFormula(sheetName, address, value)
 	}
 
 	return m.excelFile.SetCellValue(sheetName, address, value)
@@ -281,9 +293,19 @@ func (m model) View() string {
 				address, err := excelize.CoordinatesToCellName(j+m.offsetX, i)
 				if err == nil {
 
-					value, err := m.excelFile.GetCellValue(m.sheetName, address)
-					if err == nil {
-						labels[j] = value
+					// if the cell is a formula, get the value of calculated value
+					cellType, err := m.excelFile.GetCellType(m.sheetName, address)
+
+					if err == nil && cellType == excelize.CellTypeFormula {
+						result, err := m.excelFile.CalcCellValue(m.sheetName, address)
+						if err == nil {
+							labels[j] = result
+						}
+					} else {
+						value, err := m.excelFile.GetCellValue(m.sheetName, address)
+						if err == nil {
+							labels[j] = value
+						}
 					}
 				}
 			}

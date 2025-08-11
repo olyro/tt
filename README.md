@@ -65,15 +65,15 @@ tt file.xlsx
 
 ### Editing
 
-| Key     | Description                                                                                    |
-| ------- | ---------------------------------------------------------------------------------------------- |
-| `i`     | Edit current cell (cursor at beginning)                                                        |
-| `a`     | Edit current cell (cursor at end)                                                              |
-| `c`     | Change cell content (clear and edit)                                                           |
-| `x`     | Clears the selection                                                                           |
-| `d`     | Deletes the selected rows or columns, in case of block and cell select it clears the selection |
-| `Enter` | Confirm input                                                                                  |
-| `Esc`   | Cancel editing / return to normal mode                                                         |
+| Key     | Description                                                                                         |
+| ------- | --------------------------------------------------------------------------------------------------- |
+| `i`     | Edit current cell (cursor at beginning)                                                             |
+| `a`     | Edit current cell (cursor at end)                                                                   |
+| `c`     | Change cell content (clear and edit)                                                                |
+| `x`     | Clears the selected cells                                                                           |
+| `d`     | Deletes the selected rows or columns, in case of block and cell select it clears the selected cells |
+| `Enter` | Confirm input                                                                                       |
+| `Esc`   | Cancel editing / return to normal mode                                                              |
 
 ### Rows and Columns
 
