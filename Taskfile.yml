@@ -1,8 +1,17 @@
 # https://taskfile.dev
 
-version: '3'
+version: "3"
 
 tasks:
   build:
     cmds:
       - go build -o tt
+  build:darwin:
+    cmds:
+      - GOOS=darwin go build -o darwin-arm64-tt
+  build:windows:
+    cmds:
+      - GOOS=windows go build -o windows-arm64-tt.exe
+  build:linux:
+    cmds:
+      - GOOS=linux go build -o linux-arm64-tt
