@@ -426,6 +426,8 @@ func (c *clearOperation) Init(m model) error {
 }
 
 func (c *clearOperation) Do(m model) (model, error) {
+	m.makeCopy()
+
 	for address := range c.oldValues {
 		if err := m.excelFile.SetCellValue(c.sheetName, address, nil); err != nil {
 			return m, err
@@ -528,6 +530,8 @@ func (d *deleteOperation) Init(m model) error {
 }
 
 func (d *deleteOperation) Do(m model) (model, error) {
+	m.makeCopy()
+
 	switch d.selectionKind {
 	case CellSelect, BlockSelect:
 		for address := range d.oldValues {

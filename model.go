@@ -89,7 +89,7 @@ func (m *model) UpdateValuePrompt() {
 		if cellType, err := m.excelFile.GetCellType(m.sheetName, address); err == nil && cellType == excelize.CellTypeFormula {
 			formula, err := m.excelFile.GetCellFormula(m.sheetName, address)
 			if err == nil {
-				m.input.SetValue(formula)
+				m.input.SetValue(prefixWithEqual(formula))
 			}
 		} else {
 			value, err := m.excelFile.GetCellValue(m.sheetName, address)
@@ -173,20 +173,20 @@ func (m model) setCellValue(sheetName, address, value string) error {
 		return m.excelFile.SetCellValue(sheetName, address, value)
 	}
 
-	if parsedTime, err := time.Parse(time.DateTime, value); err == nil {
-		return m.excelFile.SetCellValue(sheetName, address, parsedTime)
-	}
-
-	if parsedDuration, err := time.ParseDuration(value); err == nil {
-		return m.excelFile.SetCellValue(sheetName, address, parsedDuration)
+	if parsedInt, err := strconv.Atoi(value); err == nil {
+		return m.excelFile.SetCellValue(sheetName, address, parsedInt)
 	}
 
 	if parsedFloat, err := strconv.ParseFloat(value, 64); err == nil {
 		return m.excelFile.SetCellValue(sheetName, address, parsedFloat)
 	}
 
-	if parsedInt, err := strconv.Atoi(value); err == nil {
-		return m.excelFile.SetCellValue(sheetName, address, parsedInt)
+	if parsedTime, err := time.Parse(time.DateTime, value); err == nil {
+		return m.excelFile.SetCellValue(sheetName, address, parsedTime)
+	}
+
+	if parsedDuration, err := time.ParseDuration(value); err == nil {
+		return m.excelFile.SetCellValue(sheetName, address, parsedDuration)
 	}
 
 	// if the value starts with =, set as formula

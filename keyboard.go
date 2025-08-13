@@ -2,6 +2,7 @@ package main
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/xuri/excelize/v2"
 )
 
 func handleKeyboardEvent(m model, msg tea.KeyMsg) (model, tea.Cmd) {
@@ -174,7 +175,28 @@ func handleKeyboardEvent(m model, msg tea.KeyMsg) (model, tea.Cmd) {
 	case "i":
 		if !m.useInput {
 			m.currentOp = &changeOperation{}
-			value, err := m.GetCellValue()
+
+			address, err := excelize.CoordinatesToCellName(m.cursorX+1, m.cursorY+1)
+			if err != nil {
+				m.input.SetValue(err.Error())
+				return m, nil
+			}
+
+			cellType, err := m.excelFile.GetCellType(m.sheetName, address)
+
+			value := ""
+
+			if err == nil && cellType == excelize.CellTypeFormula {
+				result, err := m.excelFile.GetCellFormula(m.sheetName, address)
+				if err == nil {
+					value = prefixWithEqual(result)
+				}
+			} else {
+				val, err := m.excelFile.GetCellValue(m.sheetName, address)
+				if err == nil {
+					value = val
+				}
+			}
 
 			if err != nil {
 				m.input.SetValue(err.Error())
@@ -190,7 +212,26 @@ func handleKeyboardEvent(m model, msg tea.KeyMsg) (model, tea.Cmd) {
 	case "a":
 		if !m.useInput {
 			m.currentOp = &changeOperation{}
-			value, err := m.GetCellValue()
+			address, err := excelize.CoordinatesToCellName(m.cursorX+1, m.cursorY+1)
+			if err != nil {
+				m.input.SetValue(err.Error())
+				return m, nil
+			}
+			cellType, err := m.excelFile.GetCellType(m.sheetName, address)
+
+			value := ""
+
+			if err == nil && cellType == excelize.CellTypeFormula {
+				result, err := m.excelFile.GetCellFormula(m.sheetName, address)
+				if err == nil {
+					value = prefixWithEqual(result)
+				}
+			} else {
+				val, err := m.excelFile.GetCellValue(m.sheetName, address)
+				if err == nil {
+					value = val
+				}
+			}
 
 			if err != nil {
 				m.input.SetValue(err.Error())

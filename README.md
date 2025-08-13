@@ -20,6 +20,7 @@ files, inspired by Vim key bindings. It deviates from vim in a couple of places
 - Row and column selection
 - Block selection
 - Insert rows and columns
+- Basic Formula Support
 
 ## Installation
 
@@ -168,6 +169,12 @@ The program has different modes:
 - **COMMAND**: Command input (with `:`)
 - **SEARCH**: Search mode (with `/`)
 - **INPUT**: Cell editing
+
+## Cell Types
+
+You can see the current cell type by executing `:type` or `:t`. Formulas have to
+be start with `=`. Numbers are automatically recognized. To force a string
+prefix your input with `'`.
 
 ## Dependencies
 

@@ -125,24 +125,55 @@ func (m model) evaluateInput(input string) (string, model, tea.Cmd) {
 		return "written", m, nil
 	}
 
-	if inputs[0] == "format" {
+	if inputs[0] == "type" || inputs[0] == "t" {
 		address, err := excelize.CoordinatesToCellName(m.cursorX+1, m.cursorY+1)
-
 		if err != nil {
 			return "Error getting cell address: " + err.Error(), m, nil
 		}
 
+		// Formula takes precedence
+		if formula, _ := m.excelFile.GetCellFormula(m.sheetName, address); formula != "" {
+			return "Formula", m, nil
+		}
+
+		// Library-reported type (may be unset for numbers/dates)
+		cellType, err := m.excelFile.GetCellType(m.sheetName, address)
+		if err != nil {
+			return "Error getting cell type: " + err.Error(), m, nil
+		}
+
+		switch cellType {
+		case excelize.CellTypeBool:
+			return "Bool", m, nil
+		case excelize.CellTypeDate:
+			return "Date", m, nil
+		case excelize.CellTypeError:
+			return "Error", m, nil
+		case excelize.CellTypeInlineString, excelize.CellTypeSharedString:
+			return "String", m, nil
+		case excelize.CellTypeNumber:
+			return "Number", m, nil
+		}
+
+		// Infer type for unset
+		raw, err := m.excelFile.GetCellValue(m.sheetName, address, excelize.Options{RawCellValue: true})
+		if err != nil {
+			return "Error getting cell value: " + err.Error(), m, nil
+		}
+		if raw == "" {
+			return "Empty", m, nil
+		}
 		styleIdx, err := m.excelFile.GetCellStyle(m.sheetName, address)
-		if err != nil {
-			return "Error getting cell style: " + err.Error(), m, nil
+		if err == nil {
+			style, sErr := m.excelFile.GetStyle(styleIdx)
+			if sErr == nil && isDateNumFmt(style.NumFmt) {
+				return "Date", m, nil
+			}
 		}
-		style, err := m.excelFile.GetStyle(styleIdx)
-
-		if err != nil {
-			return "Error getting cell style: " + err.Error(), m, nil
+		if _, err := strconv.ParseFloat(raw, 64); err == nil {
+			return "Number", m, nil
 		}
-
-		return strconv.Itoa(style.NumFmt), m, nil
+		return "String", m, nil
 	}
 
 	return "Unknown Operation: " + inputs[0], m, nil

@@ -6,25 +6,27 @@ func (m *model) makeCopy() {
 	adresses := m.getSelectedCellAddresses()
 	values := make(map[string]string)
 	styles := make(map[string]int)
-	types := make(map[string]excelize.CellType)
 
 	for _, address := range adresses {
-		value, err := m.excelFile.GetCellValue(m.sheetName, address, excelize.Options{
-			RawCellValue: true,
-		})
-		if err != nil {
-			continue
+		cellType, err := m.excelFile.GetCellType(m.sheetName, address)
+		if err == nil && cellType == excelize.CellTypeFormula {
+			formula, err := m.excelFile.GetCellFormula(m.sheetName, address)
+			if err == nil {
+				values[address] = prefixWithEqual(formula)
+			}
+		} else {
+			value, err := m.excelFile.GetCellValue(m.sheetName, address, excelize.Options{
+				RawCellValue: true,
+			})
+			if err != nil {
+				continue
+			}
+			values[address] = value
 		}
-		values[address] = value
 
 		style, err := m.excelFile.GetCellStyle(m.sheetName, address)
 		if err == nil {
 			styles[address] = style
-		}
-
-		cellType, err := m.excelFile.GetCellType(m.sheetName, address)
-		if err == nil {
-			types[address] = cellType
 		}
 	}
 

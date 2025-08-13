@@ -210,3 +210,22 @@ func getNumberLength(n int) int {
 	}
 	return length
 }
+
+// isDateNumFmt returns true for well-known built-in Excel date/time number format IDs.
+// This covers common IDs: 14-22 (dates/times) and 45-47 (time durations).
+func isDateNumFmt(numFmtID int) bool {
+	switch numFmtID {
+	case 14, 15, 16, 17, 18, 19, 20, 21, 22, 45, 46, 47:
+		return true
+	default:
+		return false
+	}
+}
+
+// prefix with = if the string value has not already a =
+func prefixWithEqual(s string) string {
+	if strings.HasPrefix(s, "=") {
+		return s
+	}
+	return "=" + s
+}
