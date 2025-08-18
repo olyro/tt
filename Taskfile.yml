@@ -6,12 +6,29 @@ tasks:
   build:
     cmds:
       - go build -o tt
-  build:darwin:
+  build:darwin:arm64:
     cmds:
-      - GOOS=darwin go build -o darwin-arm64-tt
-  build:windows:
+      - GOARCH=arm64 GOOS=darwin go build -o darwin-arm64-tt
+  build:windows:arm64:
     cmds:
-      - GOOS=windows go build -o windows-arm64-tt.exe
-  build:linux:
+      - GOARCH=arm64 GOOS=windows go build -o windows-arm64-tt.exe
+  build:linux:arm64:
     cmds:
-      - GOOS=linux go build -o linux-arm64-tt
+      - GOARCH=arm64 GOOS=linux go build -o linux-arm64-tt
+  build:darwin:amd64:
+    cmds:
+      - GOARCH=amd64 GOOS=darwin go build -o darwin-amd64-tt
+  build:windows:amd64:
+    cmds:
+      - GOARCH=amd64 GOOS=windows go build -o windows-amd64-tt.exe
+  build:linux:amd64:
+    cmds:
+      - GOARCH=amd64 GOOS=linux go build -o linux-amd64-tt
+  build:release:
+    cmds:
+      - task: build:darwin:arm64
+      - task: build:windows:arm64
+      - task: build:linux:arm64
+      - task: build:darwin:amd64
+      - task: build:windows:amd64
+      - task: build:linux:amd64
