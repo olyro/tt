@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -133,7 +134,7 @@ func getFirstSheetOrCreate(f *excelize.File) string {
 	return sheet
 }
 
-func initialModel(f *excelize.File, sheet string) model {
+func initialModel(f *excelize.File, sheet string, filePath string) model {
 	m := model{}
 	ti := textinput.New()
 	ti.Blur() // start unfocused
@@ -147,6 +148,7 @@ func initialModel(f *excelize.File, sheet string) model {
 
 	m.input = ti
 	m.excelFile = f
+	m.filePath = filePath
 	m.sheetName = sheet
 	m.columnWidth = 5
 	m.selection = selection{
@@ -160,6 +162,33 @@ func initialModel(f *excelize.File, sheet string) model {
 	m.opStackPointer = -1
 
 	return m
+}
+
+func (m model) withWorkbook(f *excelize.File, filePath string) model {
+	m.excelFile = f
+	m.filePath = filePath
+	m.sheetName = getFirstSheetOrCreate(f)
+	m.offsetX = 0
+	m.offsetY = 0
+	m.cursorX = 0
+	m.cursorY = 0
+	m.currentOp = nil
+	m.opStack = make([]operation, 0)
+	m.opStackPointer = -1
+	m.normalInput = ""
+	m.searchQuery = ""
+	m.copy = nil
+	m.useInput = false
+	m.mode = Normal
+	m.input.Prompt = ""
+	m.input.Blur()
+	m.resetToCellSelection()
+	m.UpdateValuePrompt()
+	return m
+}
+
+func (m model) hasUndoHistory() bool {
+	return len(m.opStack) > 0
 }
 
 func getNumberPrefix(input string) int {
@@ -177,6 +206,25 @@ func getNumberPrefix(input string) int {
 		return -1
 	}
 	return prefix
+}
+
+func expandHomeDir(path string) string {
+	if path == "~" {
+		homeDir, err := os.UserHomeDir()
+		if err == nil {
+			return homeDir
+		}
+		return path
+	}
+
+	if strings.HasPrefix(path, "~/") {
+		homeDir, err := os.UserHomeDir()
+		if err == nil {
+			return homeDir + path[1:]
+		}
+	}
+
+	return path
 }
 
 func replaceNewLineWithWhiteSpace(s string) string {

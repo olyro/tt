@@ -12,11 +12,13 @@ func main() {
 	argsWithoutProg := os.Args[1:]
 
 	var f *excelize.File
+	filePath := ""
 
 	if len(argsWithoutProg) < 1 {
 		f = excelize.NewFile()
 	} else {
-		file, err := excelize.OpenFile(argsWithoutProg[0])
+		filePath = argsWithoutProg[0]
+		file, err := excelize.OpenFile(filePath)
 		if err != nil {
 			log.Println(err)
 			return
@@ -25,16 +27,19 @@ func main() {
 		f = file
 	}
 
-	defer func() {
-		// Close the spreadsheet.
-		if err := f.Close(); err != nil {
-			log.Println(err)
-		}
-	}()
-
 	sheet := getFirstSheetOrCreate(f)
 
-	if _, err := tea.NewProgram(initialModel(f, sheet), tea.WithAltScreen(), tea.WithMouseAllMotion()).Run(); err != nil {
+	finalModel, err := tea.NewProgram(initialModel(f, sheet, filePath), tea.WithAltScreen(), tea.WithMouseAllMotion()).Run()
+	if err != nil {
+		if closeErr := f.Close(); closeErr != nil {
+			log.Println(closeErr)
+		}
 		os.Exit(1)
+	}
+
+	if m, ok := finalModel.(model); ok && m.excelFile != nil {
+		if err := m.excelFile.Close(); err != nil {
+			log.Println(err)
+		}
 	}
 }

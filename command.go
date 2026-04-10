@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 
@@ -10,7 +11,8 @@ import (
 )
 
 func (m model) evaluateInput(input string) (string, model, tea.Cmd) {
-	inputs := strings.Split(input, " ")
+	input = strings.TrimSpace(input)
+	inputs := strings.Fields(input)
 
 	if len(inputs) < 1 {
 		return "", m, nil
@@ -94,7 +96,14 @@ func (m model) evaluateInput(input string) (string, model, tea.Cmd) {
 		return fmt.Sprintf("Sheet %s added", sheetName), m, nil
 	}
 
+	if inputs[0] == "q!" || inputs[0] == "quit!" {
+		return "", m, tea.Quit
+	}
+
 	if inputs[0] == "q" || inputs[0] == "quit" {
+		if m.hasUndoHistory() {
+			return "Undo stack is not empty, use :q! to force quit", m, nil
+		}
 		return "", m, tea.Quit
 	}
 
@@ -116,13 +125,68 @@ func (m model) evaluateInput(input string) (string, model, tea.Cmd) {
 				return "Error saving file: " + err.Error(), m, nil
 			}
 		} else {
-			fileName := inputs[1]
+			fileName := expandHomeDir(strings.TrimSpace(strings.TrimPrefix(input, inputs[0])))
 			if err := m.excelFile.SaveAs(fileName); err != nil {
 				return "Error saving file: " + err.Error(), m, nil
 			}
+			m.filePath = fileName
 		}
 
 		return "written", m, nil
+	}
+
+	if inputs[0] == "e!" || inputs[0] == "edit!" {
+		filePath := expandHomeDir(strings.TrimSpace(strings.TrimPrefix(input, inputs[0])))
+		if filePath == "" {
+			filePath = m.filePath
+		}
+		if filePath == "" {
+			return "No file path given and no current file to reload", m, nil
+		}
+
+		file, err := excelize.OpenFile(filePath)
+		if err != nil {
+			return "Error opening file: " + err.Error(), m, nil
+		}
+
+		if m.excelFile != nil {
+			if err := m.excelFile.Close(); err != nil && !os.IsNotExist(err) {
+				file.Close()
+				return "Error closing current file: " + err.Error(), m, nil
+			}
+		}
+
+		m = m.withWorkbook(file, filePath)
+		return fmt.Sprintf("Opened %s", filePath), m, nil
+	}
+
+	if inputs[0] == "e" || inputs[0] == "edit" {
+		if m.hasUndoHistory() {
+			return "Undo stack is not empty, use :e! to force open", m, nil
+		}
+
+		filePath := expandHomeDir(strings.TrimSpace(strings.TrimPrefix(input, inputs[0])))
+		if filePath == "" {
+			filePath = m.filePath
+		}
+		if filePath == "" {
+			return "No file path given and no current file to reload", m, nil
+		}
+
+		file, err := excelize.OpenFile(filePath)
+		if err != nil {
+			return "Error opening file: " + err.Error(), m, nil
+		}
+
+		if m.excelFile != nil {
+			if err := m.excelFile.Close(); err != nil && !os.IsNotExist(err) {
+				file.Close()
+				return "Error closing current file: " + err.Error(), m, nil
+			}
+		}
+
+		m = m.withWorkbook(file, filePath)
+		return fmt.Sprintf("Opened %s", filePath), m, nil
 	}
 
 	if inputs[0] == "type" || inputs[0] == "t" {

@@ -38,6 +38,7 @@ type model struct {
 	input          textinput.Model
 	useInput       bool
 	excelFile      *excelize.File
+	filePath       string
 	sheetName      string
 	selection      selection
 	columnWidth    int

@@ -134,8 +134,11 @@ Merged Cells are highlighted, only the top left value is shown.
 | `:deleteSheet [name]`  | `:bd`   | Delete sheet (current sheet if no name)      |
 | `:addSheet <name>`     | `:badd` | Create new sheet with given name             |
 | `:columnWidth [width]` | `:cw`   | Set column width (shows current if no width) |
+| `:edit [filepath]`     | `:e`    | Open file, or reload current file if omitted |
+| `:edit! [filepath]`    | `:e!`   | Open file ignoring non-empty undo history    |
 | `:write [filename]`    | `:w`    | Save file (save as filename if provided)     |
 | `:quit`                | `:q`    | Exit program                                 |
+| `:quit!`               | `:q!`   | Exit program ignoring non-empty undo history |
 
 ### Undo/Redo
 
