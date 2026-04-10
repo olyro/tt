@@ -44,6 +44,12 @@ tt
 
 # Open existing Excel file
 tt file.xlsx
+
+# Show help
+tt --help
+
+# Show version
+tt --version
 ```
 
 ## Key Bindings

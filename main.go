@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 
@@ -8,8 +9,41 @@ import (
 	"github.com/xuri/excelize/v2"
 )
 
+const version = "v0.1.5"
+
+func printHelp() {
+	fmt.Printf(`tt %s
+
+Usage:
+  tt [file.xlsx]
+  tt --help
+  tt --version
+
+Options:
+  -h, --help     Show this help
+  -v, --version  Show version
+`, version)
+}
+
 func main() {
 	argsWithoutProg := os.Args[1:]
+
+	for _, arg := range argsWithoutProg {
+		switch arg {
+		case "-h", "--help":
+			printHelp()
+			return
+		case "-v", "--version":
+			fmt.Println(version)
+			return
+		}
+	}
+
+	if len(argsWithoutProg) > 1 {
+		fmt.Fprintf(os.Stderr, "tt: expected at most one file argument\n\n")
+		printHelp()
+		os.Exit(1)
+	}
 
 	var f *excelize.File
 	filePath := ""
