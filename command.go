@@ -19,10 +19,10 @@ func (m model) evaluateInput(input string) (string, model, tea.Cmd) {
 	}
 
 	if inputs[0] == "b" || inputs[0] == "sheet" {
-		if len(inputs) < 2 {
+		sheetName := strings.TrimSpace(strings.TrimPrefix(input, inputs[0]))
+		if sheetName == "" {
 			return m.sheetName, m, nil
 		} else {
-			sheetName := inputs[1]
 			index, err := m.excelFile.GetSheetIndex(sheetName)
 			if err != nil {
 				return "Error setting active sheet: " + err.Error(), m, nil
@@ -30,7 +30,7 @@ func (m model) evaluateInput(input string) (string, model, tea.Cmd) {
 				return "Sheet not found: " + sheetName, m, nil
 			}
 			m.excelFile.SetActiveSheet(index)
-			m.sheetName = sheetName
+			m = m.activateSheet(sheetName)
 			return fmt.Sprintf("Active sheet set to %s", sheetName), m, nil
 		}
 	}
@@ -43,7 +43,7 @@ func (m model) evaluateInput(input string) (string, model, tea.Cmd) {
 		sheetCount := len(m.excelFile.GetSheetList())
 		nextIndex := (index + 1) % sheetCount
 		m.excelFile.SetActiveSheet(nextIndex)
-		m.sheetName = m.excelFile.GetSheetName(nextIndex)
+		m = m.activateSheet(m.excelFile.GetSheetName(nextIndex))
 		return fmt.Sprintf("Active sheet set to %s", m.sheetName), m, nil
 	}
 
@@ -55,7 +55,7 @@ func (m model) evaluateInput(input string) (string, model, tea.Cmd) {
 		sheetCount := len(m.excelFile.GetSheetList())
 		prevIndex := (index - 1 + sheetCount) % sheetCount
 		m.excelFile.SetActiveSheet(prevIndex)
-		m.sheetName = m.excelFile.GetSheetName(prevIndex)
+		m = m.activateSheet(m.excelFile.GetSheetName(prevIndex))
 		return fmt.Sprintf("Active sheet set to %s", m.sheetName), m, nil
 	}
 
@@ -78,8 +78,11 @@ func (m model) evaluateInput(input string) (string, model, tea.Cmd) {
 		}
 
 		if m.sheetName == sheetName {
-			m.sheetName = m.excelFile.GetSheetName(m.excelFile.GetActiveSheetIndex())
+			m = m.activateSheet(m.excelFile.GetSheetName(m.excelFile.GetActiveSheetIndex()))
 		}
+		delete(m.histories, sheetName)
+		delete(m.sheetStates, sheetName)
+		m.markMetadataMutation()
 
 		return fmt.Sprintf("Sheet %s deleted", sheetName), m, nil
 	}
@@ -92,6 +95,8 @@ func (m model) evaluateInput(input string) (string, model, tea.Cmd) {
 		if _, err := m.excelFile.NewSheet(sheetName); err != nil {
 			return "Error adding sheet: " + err.Error(), m, nil
 		}
+		m.sheetStates[sheetName] = 0
+		m.markMetadataMutation()
 
 		return fmt.Sprintf("Sheet %s added", sheetName), m, nil
 	}
@@ -101,22 +106,28 @@ func (m model) evaluateInput(input string) (string, model, tea.Cmd) {
 	}
 
 	if inputs[0] == "q" || inputs[0] == "quit" {
-		if m.hasUndoHistory() {
-			return "Undo stack is not empty, use :q! to force quit", m, nil
+		if m.hasUnsavedChanges() {
+			return "Workbook has unsaved changes, use :q! to force quit", m, nil
 		}
 		return "", m, tea.Quit
 	}
 
-	if inputs[0] == "cw" || inputs[0] == "columnWidth" {
-		if len(inputs) < 2 {
-			return strconv.Itoa(m.columnWidth), m, nil
+	if inputs[0] == "aw" || inputs[0] == "autoWidth" {
+		if len(inputs) > 2 {
+			return "Usage: :autoWidth [column]", m, nil
 		}
-		width, err := strconv.Atoi(inputs[1])
-		if err != nil || width <= 0 {
-			return "Invalid column width", m, nil
+		columnName := ""
+		if len(inputs) == 2 {
+			columnName = inputs[1]
 		}
-		m.columnWidth = width
-		return fmt.Sprintf("Column width set to %d", m.columnWidth), m, nil
+		newModel, count, err := m.autoFitColumns(columnName)
+		if err != nil {
+			return "Error auto-fitting columns: " + err.Error(), m, nil
+		}
+		if count == 0 {
+			return "No populated columns to auto-fit", m, nil
+		}
+		return fmt.Sprintf("Auto-fitted %d column(s) on %s", count, m.sheetName), newModel, nil
 	}
 
 	if inputs[0] == "w" || inputs[0] == "write" {
@@ -131,6 +142,7 @@ func (m model) evaluateInput(input string) (string, model, tea.Cmd) {
 			}
 			m.filePath = fileName
 		}
+		m.markSaved()
 
 		return "written", m, nil
 	}
@@ -161,8 +173,8 @@ func (m model) evaluateInput(input string) (string, model, tea.Cmd) {
 	}
 
 	if inputs[0] == "e" || inputs[0] == "edit" {
-		if m.hasUndoHistory() {
-			return "Undo stack is not empty, use :e! to force open", m, nil
+		if m.hasUnsavedChanges() {
+			return "Workbook has unsaved changes, use :e! to force open", m, nil
 		}
 
 		filePath := expandHomeDir(strings.TrimSpace(strings.TrimPrefix(input, inputs[0])))

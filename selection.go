@@ -61,6 +61,7 @@ func (m model) getSelectedCellAddresses() []string {
 		if err != nil {
 			return nil
 		}
+		defer rows.Close()
 
 		index := 0
 
@@ -91,6 +92,7 @@ func (m model) getSelectedCellAddresses() []string {
 		if err != nil {
 			return nil
 		}
+		defer rows.Close()
 
 		index := 0
 
@@ -120,4 +122,6 @@ func (m *model) resetToCellSelection() {
 		y: m.cursorY,
 	}
 	m.selection.block = nil
+	m.selection.rows = nil
+	m.selection.columns = nil
 }

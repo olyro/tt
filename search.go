@@ -33,7 +33,7 @@ func (m model) Search(searchTerm string, forward bool) model {
 			if strings.Contains(strings.ToLower(column), strings.ToLower(searchTerm)) {
 				m.cursorX = i
 				m.cursorY = index
-				m.offsetX = max(m.cursorX-m.GetNrOfVisibleColumns()+1, 0)
+				m.ensureCursorColumnVisible()
 				m.offsetY = max(m.cursorY-m.GetNrOfVisibleRows()+2, 0)
 				m.UpdateValuePrompt()
 				return m
@@ -61,6 +61,7 @@ func (m model) SearchIterator(searchTerm string, forward bool) model {
 	if err != nil {
 		return m
 	}
+	defer rows.Close()
 
 	var index = 0
 
@@ -106,7 +107,7 @@ Outer:
 			m.cursorX = results[len(results)-1].x
 			m.cursorY = results[len(results)-1].y
 		}
-		m.offsetX = max(m.cursorX-m.GetNrOfVisibleColumns()+1, 0)
+		m.ensureCursorColumnVisible()
 		m.offsetY = max(m.cursorY-m.GetNrOfVisibleRows()+2, 0)
 		m.UpdateValuePrompt()
 	}

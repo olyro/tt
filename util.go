@@ -150,7 +150,6 @@ func initialModel(f *excelize.File, sheet string, filePath string) model {
 	m.excelFile = f
 	m.filePath = filePath
 	m.sheetName = sheet
-	m.columnWidth = 5
 	m.selection = selection{
 		kind: CellSelect,
 		cell: &cellSelect{
@@ -158,8 +157,16 @@ func initialModel(f *excelize.File, sheet string, filePath string) model {
 			y: 0,
 		},
 	}
-	m.opStack = make([]operation, 0)
+	m.opStack = make([]operationRecord, 0)
 	m.opStackPointer = -1
+	m.histories = map[string]operationHistory{}
+	m.sheetStates = make(map[string]uint64)
+	for _, sheetName := range f.GetSheetList() {
+		m.sheetStates[sheetName] = 0
+	}
+	m.savedStates = cloneStates(m.sheetStates)
+	m.clipboard = systemClipboard{}
+	m.displayCache = make(map[string]string)
 
 	return m
 }
@@ -173,22 +180,72 @@ func (m model) withWorkbook(f *excelize.File, filePath string) model {
 	m.cursorX = 0
 	m.cursorY = 0
 	m.currentOp = nil
-	m.opStack = make([]operation, 0)
+	m.opStack = make([]operationRecord, 0)
 	m.opStackPointer = -1
+	m.histories = map[string]operationHistory{}
+	m.sheetStates = make(map[string]uint64)
+	for _, sheetName := range f.GetSheetList() {
+		m.sheetStates[sheetName] = 0
+	}
+	m.savedStates = cloneStates(m.sheetStates)
+	m.nextStateID = 0
+	m.metadataState = 0
+	m.savedMetadata = 0
 	m.normalInput = ""
 	m.searchQuery = ""
 	m.copy = nil
+	m.dirty = false
+	m.displayCache = make(map[string]string)
 	m.useInput = false
 	m.mode = Normal
 	m.input.Prompt = ""
+	m.disableInputCompletion()
 	m.input.Blur()
 	m.resetToCellSelection()
 	m.UpdateValuePrompt()
 	return m
 }
 
-func (m model) hasUndoHistory() bool {
-	return len(m.opStack) > 0
+func (m model) hasUnsavedChanges() bool {
+	return m.dirty
+}
+
+func (m *model) enableSheetCompletion() {
+	sheets := m.excelFile.GetSheetList()
+	suggestions := make([]string, 0, len(sheets))
+	for _, sheetName := range sheets {
+		suggestions = append(suggestions, "b "+sheetName)
+	}
+	m.input.ShowSuggestions = true
+	m.input.SetSuggestions(suggestions)
+}
+
+func (m *model) disableInputCompletion() {
+	m.input.ShowSuggestions = false
+	m.input.SetSuggestions(nil)
+}
+
+func (m model) activateSheet(sheetName string) model {
+	if m.histories == nil {
+		m.histories = make(map[string]operationHistory)
+	}
+	m.histories[m.sheetName] = operationHistory{stack: m.opStack, pointer: m.opStackPointer}
+	m.sheetName = sheetName
+	history, ok := m.histories[sheetName]
+	if ok {
+		m.opStack = history.stack
+		m.opStackPointer = history.pointer
+	} else {
+		m.opStack = make([]operationRecord, 0)
+		m.opStackPointer = -1
+	}
+	m.offsetX, m.offsetY = 0, 0
+	m.cursorX, m.cursorY = 0, 0
+	m.normalInput = ""
+	m.searchQuery = ""
+	m.resetToCellSelection()
+	m.UpdateValuePrompt()
+	return m
 }
 
 func getNumberPrefix(input string) int {

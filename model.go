@@ -1,7 +1,6 @@
 package main
 
 import (
-	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -23,9 +22,18 @@ const (
 
 type copy struct {
 	selection selection
-	values    map[string]string
-	styles    map[string]int
-	types     map[string]excelize.CellType
+	cells     map[string]cellSnapshot
+}
+
+type operationHistory struct {
+	stack   []operationRecord
+	pointer int
+}
+
+type operationRecord struct {
+	operation     operation
+	beforeStateID uint64
+	afterStateID  uint64
 }
 
 type model struct {
@@ -41,18 +49,28 @@ type model struct {
 	filePath       string
 	sheetName      string
 	selection      selection
-	columnWidth    int
 	currentOp      operation
-	opStack        []operation
+	opStack        []operationRecord
 	opStackPointer int
+	histories      map[string]operationHistory
+	sheetStates    map[string]uint64
+	savedStates    map[string]uint64
+	nextStateID    uint64
+	metadataState  uint64
+	savedMetadata  uint64
 	normalInput    string
 	mode           mode
 	searchQuery    string
 	copy           *copy
+	dirty          bool
+	clipboard      clipboardService
+	displayCache   map[string]string
 }
 
+const maxExcelRows = 1048576
+
 func (m model) GetNrOfVisibleRows() int {
-	return (m.height - 2) / 2
+	return max((m.height-2)/2, 1)
 }
 
 func (m model) GetRowNrColumnWidth() int {
@@ -60,8 +78,7 @@ func (m model) GetRowNrColumnWidth() int {
 }
 
 func (m model) GetNrOfVisibleColumns() int {
-	rowNrColumnWidth := m.GetRowNrColumnWidth()
-	return int(math.Ceil(float64(m.width-rowNrColumnWidth-1) / float64(m.columnWidth+1)))
+	return len(m.visibleColumnLayout())
 }
 
 func (m model) Init() tea.Cmd {
@@ -108,6 +125,7 @@ func (m model) GetMaxColumn(rowIndex int) int {
 	if err != nil {
 		return 0
 	}
+	defer rows.Close()
 
 	index := 0
 
@@ -128,8 +146,54 @@ func (m *model) pushOp(operation operation) {
 	if m.opStackPointer < len(m.opStack)-1 {
 		m.opStack = m.opStack[:m.opStackPointer+1]
 	}
-	m.opStack = append(m.opStack, operation)
+	beforeStateID := m.sheetStates[m.sheetName]
+	m.nextStateID++
+	afterStateID := m.nextStateID
+	m.opStack = append(m.opStack, operationRecord{
+		operation:     operation,
+		beforeStateID: beforeStateID,
+		afterStateID:  afterStateID,
+	})
 	m.opStackPointer++
+	m.sheetStates[m.sheetName] = afterStateID
+	m.updateDirtyState()
+}
+
+func (m *model) invalidateDisplayCache() {
+	clear(m.displayCache)
+}
+
+func cloneStates(states map[string]uint64) map[string]uint64 {
+	cloned := make(map[string]uint64, len(states))
+	for sheetName, state := range states {
+		cloned[sheetName] = state
+	}
+	return cloned
+}
+
+func (m *model) updateDirtyState() {
+	if m.metadataState != m.savedMetadata || len(m.sheetStates) != len(m.savedStates) {
+		m.dirty = true
+		return
+	}
+	for sheetName, state := range m.sheetStates {
+		if m.savedStates[sheetName] != state {
+			m.dirty = true
+			return
+		}
+	}
+	m.dirty = false
+}
+
+func (m *model) markSaved() {
+	m.savedStates = cloneStates(m.sheetStates)
+	m.savedMetadata = m.metadataState
+	m.dirty = false
+}
+
+func (m *model) markMetadataMutation() {
+	m.metadataState++
+	m.updateDirtyState()
 }
 
 func (m model) IsPartOfMergeCell(x, y int) (bool, bool) {
@@ -208,6 +272,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.ensureCursorColumnVisible()
+	case clipboardWriteMsg:
+		if msg.err != nil {
+			m.input.SetValue("Clipboard error: " + msg.err.Error())
+		} else {
+			m.input.SetValue("copied to system clipboard")
+		}
+	case clipboardReadMsg:
+		if msg.err != nil {
+			m.input.SetValue("Clipboard error: " + msg.err.Error())
+		} else {
+			m = m.importClipboard(msg.text)
+		}
 	}
 	switch m.selection.kind {
 	case CellSelect:
@@ -255,63 +332,64 @@ func (m model) View() string {
 	height := m.GetNrOfVisibleRows()
 
 	rowNumberWidth := m.GetRowNrColumnWidth()
-	visibleColumns := m.GetNrOfVisibleColumns()
+	visibleColumns := m.visibleColumnLayout()
+	merges := m.mergedCellLookup()
 
 	for i := range height {
 		i = i + m.offsetY
-		widths := make([]int, m.GetNrOfVisibleColumns()+1)
-
-		for j := 0; j <= visibleColumns; j++ {
-			switch j {
-			case 0:
-				widths[j] = rowNumberWidth
-			case visibleColumns:
-				widths[j] = max(m.width-rowNumberWidth-1-(visibleColumns-1)*(m.columnWidth+1)-2, 1) // last column
-			default:
-				widths[j] = m.columnWidth // data columns
-			}
+		widths := make([]int, len(visibleColumns)+1)
+		widths[0] = rowNumberWidth
+		for columnOffset, column := range visibleColumns {
+			widths[columnOffset+1] = column.width
 		}
 
 		switch i {
 		case m.offsetY:
-			labels := make([]string, m.GetNrOfVisibleColumns()+1)
+			labels := make([]string, len(visibleColumns)+1)
 			labels[0] = ""
-			for j := 1; j <= m.GetNrOfVisibleColumns(); j++ {
-				label, err := excelize.ColumnNumberToName(j + m.offsetX)
+			for columnOffset, column := range visibleColumns {
+				label, err := excelize.ColumnNumberToName(column.index + 1)
 
 				if err == nil {
-					labels[j] = label
+					labels[columnOffset+1] = label
 				}
 			}
 
-			line := m.formatRow(labels, widths, i)
+			line := m.formatRow(labels, widths, i, merges)
 			b.WriteString(line + "\n")
 		default:
-			labels := make([]string, m.GetNrOfVisibleColumns()+1)
+			labels := make([]string, len(visibleColumns)+1)
 			labels[0] = strconv.Itoa(i)
 
-			for j := 1; j <= m.GetNrOfVisibleColumns(); j++ {
-				address, err := excelize.CoordinatesToCellName(j+m.offsetX, i)
+			for columnOffset, column := range visibleColumns {
+				address, err := excelize.CoordinatesToCellName(column.index+1, i)
 				if err == nil {
 
 					// if the cell is a formula, get the value of calculated value
 					cellType, err := m.excelFile.GetCellType(m.sheetName, address)
 
 					if err == nil && cellType == excelize.CellTypeFormula {
-						result, err := m.excelFile.CalcCellValue(m.sheetName, address)
+						cacheKey := m.sheetName + "\x00" + address
+						result, ok := m.displayCache[cacheKey]
+						if !ok {
+							result, err = m.excelFile.CalcCellValue(m.sheetName, address)
+							if err == nil && m.displayCache != nil {
+								m.displayCache[cacheKey] = result
+							}
+						}
 						if err == nil {
-							labels[j] = result
+							labels[columnOffset+1] = result
 						}
 					} else {
 						value, err := m.excelFile.GetCellValue(m.sheetName, address)
 						if err == nil {
-							labels[j] = value
+							labels[columnOffset+1] = value
 						}
 					}
 				}
 			}
 
-			line := m.formatRow(labels, widths, i)
+			line := m.formatRow(labels, widths, i, merges)
 			b.WriteString(line + "\n")
 		}
 	}
@@ -325,12 +403,44 @@ func (m model) View() string {
 	return b.String()
 }
 
-func (m model) formatRow(row []string, widths []int, rowIndex int) string {
+type mergePosition struct {
+	merged bool
+	first  bool
+}
+
+func (m model) mergedCellLookup() map[coordinate]mergePosition {
+	lookup := make(map[coordinate]mergePosition)
+	mergeCells, err := m.excelFile.GetMergeCells(m.sheetName)
+	if err != nil {
+		return lookup
+	}
+	columns := m.visibleColumnLayout()
+	visibleStartX := columns[0].index
+	visibleEndX := columns[len(columns)-1].index
+	for _, mergeCell := range mergeCells {
+		startX, startY, startErr := excelize.CellNameToCoordinates(mergeCell.GetStartAxis())
+		endX, endY, endErr := excelize.CellNameToCoordinates(mergeCell.GetEndAxis())
+		if startErr != nil || endErr != nil {
+			continue
+		}
+		visibleStartY := m.offsetY
+		visibleEndY := m.offsetY + m.GetNrOfVisibleRows() - 2
+		for y := max(startY-1, visibleStartY); y <= min(endY-1, visibleEndY); y++ {
+			for x := max(startX-1, visibleStartX); x <= min(endX-1, visibleEndX); x++ {
+				lookup[coordinate{x: x, y: y}] = mergePosition{merged: true, first: x == startX-1 && y == startY-1}
+			}
+		}
+	}
+	return lookup
+}
+
+func (m model) formatRow(row []string, widths []int, rowIndex int, merges map[coordinate]mergePosition) string {
 	var rendered []string
 	for i, cell := range row {
 		value := limitString(replaceNewLineWithWhiteSpace(cell), widths[i])
 
-		isMergeCell, isFirst := m.IsPartOfMergeCell(i+m.offsetX-1, rowIndex-1)
+		merge := merges[coordinate{x: i + m.offsetX - 1, y: rowIndex - 1}]
+		isMergeCell, isFirst := merge.merged, merge.first
 		isSelected := m.isSelected(rowIndex-1, i+m.offsetX-1)
 
 		if isMergeCell && !isFirst {

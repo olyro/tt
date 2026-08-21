@@ -26,23 +26,27 @@ func handleKeyboardEvent(m model, msg tea.KeyMsg) (model, tea.Cmd) {
 		if !m.useInput {
 			maxCol := m.GetMaxColumn(m.cursorY)
 			m.cursorX = max(maxCol-1, 0)
-			m.offsetX = max(maxCol-m.GetNrOfVisibleColumns(), 0)
+			m.ensureCursorColumnVisible()
 			m.UpdateValuePrompt()
 		}
 	case ":":
 		if !m.useInput {
+			m.currentOp = nil
 			m.input.Prompt = ":"
 			m.useInput = true
 			m.input.Reset()
+			m.enableSheetCompletion()
 			m.input.Focus()
 			m.mode = Command
 			return m, nil
 		}
 	case "/":
 		if !m.useInput {
+			m.currentOp = nil
 			m.input.Prompt = "/"
 			m.useInput = true
 			m.input.Reset()
+			m.disableInputCompletion()
 			m.input.Focus()
 			m.mode = Search
 			return m, nil
@@ -51,19 +55,18 @@ func handleKeyboardEvent(m model, msg tea.KeyMsg) (model, tea.Cmd) {
 		if m.useInput {
 			m.useInput = false
 			var message string
-			var newModel model
+			newModel := m
 			var cmd tea.Cmd
+			var err error
 			if m.currentOp != nil {
-				err := m.currentOp.Init(m)
-				newM, err := m.currentOp.Do(m)
-				newModel = newM
+				op := m.currentOp
+				newModel, err = executeOperation(m, op)
 				newModel.currentOp = nil
 				if err != nil {
 					message = err.Error()
 					newModel.input.SetValue(message)
 				} else {
-					newModel.pushOp(m.currentOp)
-					m.UpdateValuePrompt()
+					newModel.UpdateValuePrompt()
 				}
 			} else if m.mode == Command {
 				message, newModel, cmd = m.evaluateInput(m.input.Value())
@@ -75,6 +78,7 @@ func handleKeyboardEvent(m model, msg tea.KeyMsg) (model, tea.Cmd) {
 			}
 			m = newModel
 			m.input.Prompt = ""
+			m.disableInputCompletion()
 			m.resetToCellSelection()
 			m.input.Blur()
 			m.mode = Normal
@@ -88,10 +92,11 @@ func handleKeyboardEvent(m model, msg tea.KeyMsg) (model, tea.Cmd) {
 				prefix = 1
 			}
 
-			if m.cursorY-prefix < m.offsetY {
-				m.offsetY -= prefix
+			newCursor := max(m.cursorY-prefix, 0)
+			if newCursor < m.offsetY {
+				m.offsetY = newCursor
 			}
-			m.cursorY -= prefix
+			m.cursorY = newCursor
 			m.normalInput = ""
 			m.UpdateValuePrompt()
 		}
@@ -103,10 +108,11 @@ func handleKeyboardEvent(m model, msg tea.KeyMsg) (model, tea.Cmd) {
 				prefix = 1
 			}
 
-			if m.cursorY+prefix > m.GetNrOfVisibleRows()-2+m.offsetY {
-				m.offsetY += prefix
+			newCursor := min(m.cursorY+prefix, maxExcelRows-1)
+			if newCursor > m.GetNrOfVisibleRows()-2+m.offsetY {
+				m.offsetY = max(newCursor-m.GetNrOfVisibleRows()+2, 0)
 			}
-			m.cursorY += prefix
+			m.cursorY = newCursor
 			m.normalInput = ""
 			m.UpdateValuePrompt()
 		}
@@ -118,10 +124,11 @@ func handleKeyboardEvent(m model, msg tea.KeyMsg) (model, tea.Cmd) {
 				prefix = 1
 			}
 
-			if m.cursorX-prefix < m.offsetX {
-				m.offsetX -= prefix
+			newCursor := max(m.cursorX-prefix, 0)
+			if newCursor < m.offsetX {
+				m.offsetX = newCursor
 			}
-			m.cursorX -= prefix
+			m.cursorX = newCursor
 			m.normalInput = ""
 			m.UpdateValuePrompt()
 		}
@@ -133,10 +140,9 @@ func handleKeyboardEvent(m model, msg tea.KeyMsg) (model, tea.Cmd) {
 				prefix = 1
 			}
 
-			if m.cursorX+prefix > m.GetNrOfVisibleColumns()+m.offsetX-1 {
-				m.offsetX += prefix
-			}
-			m.cursorX += prefix
+			newCursor := min(m.cursorX+prefix, excelize.MaxColumns-1)
+			m.cursorX = newCursor
+			m.ensureCursorColumnVisible()
 			m.normalInput = ""
 			m.UpdateValuePrompt()
 		}
@@ -145,9 +151,15 @@ func handleKeyboardEvent(m model, msg tea.KeyMsg) (model, tea.Cmd) {
 			if !m.useInput && m.opStackPointer < len(m.opStack)-1 {
 				m.opStackPointer++
 				nextOp := m.opStack[m.opStackPointer]
-				m, err := nextOp.Do(m)
+				newModel, err := nextOp.operation.Do(m)
 				if err != nil {
 					m.input.SetValue(err.Error())
+					m.opStackPointer--
+				} else {
+					m = newModel
+					m.sheetStates[m.sheetName] = nextOp.afterStateID
+					m.updateDirtyState()
+					m.invalidateDisplayCache()
 				}
 				return m, nil
 			}
@@ -156,10 +168,15 @@ func handleKeyboardEvent(m model, msg tea.KeyMsg) (model, tea.Cmd) {
 		{
 			if !m.useInput && m.opStackPointer >= 0 {
 				lastOp := m.opStack[m.opStackPointer]
-				m, err := lastOp.Undo(m)
-				m.opStackPointer--
+				newModel, err := lastOp.operation.Undo(m)
 				if err != nil {
 					m.input.SetValue(err.Error())
+				} else {
+					m = newModel
+					m.opStackPointer--
+					m.sheetStates[m.sheetName] = lastOp.beforeStateID
+					m.updateDirtyState()
+					m.invalidateDisplayCache()
 				}
 				return m, nil
 			}
@@ -254,15 +271,14 @@ func handleKeyboardEvent(m model, msg tea.KeyMsg) (model, tea.Cmd) {
 			}
 
 			op := &columnInsertOperation{colIndex: max(m.cursorX+1, 0), amount: amount}
-			op.Init(m)
-			newModel, err := op.Do(m)
+			newModel, err := executeOperation(m, op)
 
 			if err != nil {
-				newModel.input.SetValue(err.Error())
+				m.input.SetValue(err.Error())
+				return m, nil
 			}
 
 			newModel.normalInput = ""
-			newModel.pushOp(op)
 			m = newModel
 		}
 	case "A":
@@ -275,15 +291,14 @@ func handleKeyboardEvent(m model, msg tea.KeyMsg) (model, tea.Cmd) {
 			}
 
 			op := &columnInsertOperation{colIndex: m.cursorX + 2, amount: amount}
-			op.Init(m)
-			newModel, err := op.Do(m)
+			newModel, err := executeOperation(m, op)
 
 			if err != nil {
-				newModel.input.SetValue(err.Error())
+				m.input.SetValue(err.Error())
+				return m, nil
 			}
 
 			newModel.normalInput = ""
-			newModel.pushOp(op)
 			m = newModel
 		}
 	case "O":
@@ -296,15 +311,14 @@ func handleKeyboardEvent(m model, msg tea.KeyMsg) (model, tea.Cmd) {
 			}
 
 			op := &rowInsertOperation{rowIndex: max(m.cursorY+1, 0), amount: amount}
-			op.Init(m)
-			newModel, err := op.Do(m)
+			newModel, err := executeOperation(m, op)
 
 			if err != nil {
-				newModel.input.SetValue(err.Error())
+				m.input.SetValue(err.Error())
+				return m, nil
 			}
 
 			newModel.normalInput = ""
-			newModel.pushOp(op)
 			m = newModel
 		}
 	case "o":
@@ -317,15 +331,14 @@ func handleKeyboardEvent(m model, msg tea.KeyMsg) (model, tea.Cmd) {
 			}
 
 			op := &rowInsertOperation{rowIndex: m.cursorY + 2, amount: amount}
-			op.Init(m)
-			newModel, err := op.Do(m)
+			newModel, err := executeOperation(m, op)
 
 			if err != nil {
-				newModel.input.SetValue(err.Error())
+				m.input.SetValue(err.Error())
+				return m, nil
 			}
 
 			newModel.normalInput = ""
-			newModel.pushOp(op)
 			m = newModel
 		}
 	case "v":
@@ -366,8 +379,10 @@ func handleKeyboardEvent(m model, msg tea.KeyMsg) (model, tea.Cmd) {
 	case "esc":
 		if m.useInput {
 			m.useInput = false
+			m.currentOp = nil
 			m.input.Blur()
 			m.input.Prompt = ""
+			m.disableInputCompletion()
 		} else {
 			m.normalInput = ""
 			m.resetToCellSelection()
@@ -382,7 +397,7 @@ func handleKeyboardEvent(m model, msg tea.KeyMsg) (model, tea.Cmd) {
 				prefix := getNumberPrefix(m.normalInput)
 				if lastChar == "g" {
 					if prefix > 0 {
-						m.cursorY = prefix - 1
+						m.cursorY = min(prefix-1, maxExcelRows-1)
 						m.offsetY = max(m.cursorY-m.GetNrOfVisibleRows()+2, 0)
 					} else {
 						m.offsetY = 0
@@ -401,11 +416,12 @@ func handleKeyboardEvent(m model, msg tea.KeyMsg) (model, tea.Cmd) {
 		if !m.useInput {
 			prefix := getNumberPrefix(m.normalInput)
 			if prefix > 0 {
-				m.cursorY = prefix - 1
+				m.cursorY = min(prefix-1, maxExcelRows-1)
 				m.offsetY = max(m.cursorY-m.GetNrOfVisibleRows()+2, 0)
 			} else {
 				rows, err := m.excelFile.Rows(m.sheetName)
 				if err == nil {
+					defer rows.Close()
 					lastRow := 0
 					for rows.Next() {
 						lastRow++
@@ -428,12 +444,10 @@ func handleKeyboardEvent(m model, msg tea.KeyMsg) (model, tea.Cmd) {
 	case "M":
 		if !m.useInput {
 			op := &unmergeOperation{}
-			op.Init(m)
-			newModel, err := op.Do(m)
+			newModel, err := executeOperation(m, op)
 			if err != nil {
-				newModel.input.SetValue(err.Error())
-			} else {
-				newModel.pushOp(op)
+				m.input.SetValue(err.Error())
+				return m, nil
 			}
 			newModel.resetToCellSelection()
 			m = newModel
@@ -441,43 +455,59 @@ func handleKeyboardEvent(m model, msg tea.KeyMsg) (model, tea.Cmd) {
 	case "m":
 		if !m.useInput {
 			op := &mergeOperation{}
-			op.Init(m)
-			newModel, err := op.Do(m)
+			newModel, err := executeOperation(m, op)
 			if err != nil {
-				newModel.input.SetValue(err.Error())
-			} else {
-				newModel.pushOp(op)
+				m.input.SetValue(err.Error())
+				return m, nil
 			}
 			newModel.resetToCellSelection()
 			m = newModel
 		}
 	case "y":
 		if !m.useInput {
-			m.makeCopy()
+			if err := m.makeCopy(); err != nil {
+				m.input.SetValue(err.Error())
+			}
+		}
+	case "Y":
+		if !m.useInput {
+			if m.clipboard == nil {
+				m.clipboard = systemClipboard{}
+			}
+			value, err := m.exportSelectionTSV()
+			if err != nil {
+				m.input.SetValue(err.Error())
+				return m, nil
+			}
+			return m, writeClipboardCmd(m.clipboard, value)
+		}
+	case "P":
+		if !m.useInput {
+			if m.clipboard == nil {
+				m.clipboard = systemClipboard{}
+			}
+			return m, readClipboardCmd(m.clipboard)
 		}
 	case "p":
 		if !m.useInput && m.copy != nil {
 			op := &pasteOperation{}
-			op.Init(m)
-			newModel, err := op.Do(m)
+			newModel, err := executeOperation(m, op)
 
 			if err != nil {
-				newModel.input.SetValue(err.Error())
+				m.input.SetValue(err.Error())
+				return m, nil
 			}
 
 			newModel.normalInput = ""
-			newModel.pushOp(op)
 			m = newModel
 		}
 	case "d":
 		if !m.useInput {
 			op := &deleteOperation{}
-			op.Init(m)
-			newModel, err := op.Do(m)
+			newModel, err := executeOperation(m, op)
 			if err != nil {
-				newModel.input.SetValue(err.Error())
-			} else {
-				newModel.pushOp(op)
+				m.input.SetValue(err.Error())
+				return m, nil
 			}
 			newModel.resetToCellSelection()
 			m = newModel
@@ -485,27 +515,31 @@ func handleKeyboardEvent(m model, msg tea.KeyMsg) (model, tea.Cmd) {
 	case "x":
 		if !m.useInput {
 			op := &clearOperation{}
-			op.Init(m)
-			newModel, err := op.Do(m)
+			newModel, err := executeOperation(m, op)
 			if err != nil {
-				newModel.input.SetValue(err.Error())
-			} else {
-				newModel.pushOp(op)
+				m.input.SetValue(err.Error())
+				return m, nil
 			}
 			newModel.resetToCellSelection()
 			m = newModel
 		}
 	case "ctrl+d":
 		if !m.useInput {
-			m.offsetY += m.GetNrOfVisibleRows() - 1
-			m.cursorY += m.GetNrOfVisibleRows() - 1
+			amount := max(m.GetNrOfVisibleRows()-1, 1)
+			m.cursorY = min(m.cursorY+amount, maxExcelRows-1)
+			m.offsetY = max(m.cursorY-m.GetNrOfVisibleRows()+2, 0)
 		}
 	case "ctrl+u":
 		if !m.useInput {
-			m.offsetY = max(m.offsetY-(m.GetNrOfVisibleRows()-1), 0)
-			m.cursorY = max(m.cursorY-(m.GetNrOfVisibleRows()-1), 0)
+			amount := max(m.GetNrOfVisibleRows()-1, 1)
+			m.cursorY = max(m.cursorY-amount, 0)
+			m.offsetY = min(m.offsetY, m.cursorY)
 		}
 	case "ctrl+c":
+		if m.dirty {
+			m.input.SetValue("Workbook has unsaved changes, use :q! to force quit")
+			return m, nil
+		}
 		return m, tea.Quit
 	}
 

@@ -16,6 +16,7 @@ files, inspired by Vim key bindings. It deviates from vim in a couple of places
 - Basic Search and replace
 - Undo/Redo functionality
 - Copy and paste
+- System clipboard interoperability using TSV
 - Merging and Unmerging
 - Row and column selection
 - Block selection
@@ -111,10 +112,17 @@ Merged Cells are highlighted, only the top left value is shown.
 
 ### Copy and Paste
 
-| Key | Description            |
-| --- | ---------------------- |
-| `y` | Copy current selection |
-| `p` | Paste copied content   |
+| Key | Description                                                    |
+| --- | -------------------------------------------------------------- |
+| `y` | Copy current selection                                         |
+| `p` | Paste copied content                                           |
+| `Y` | Copy selection to the system clipboard as TSV                  |
+| `P` | Paste TSV from the system clipboard at the current cell        |
+
+System clipboard paste overlays cells starting at the cursor and is recorded as
+one undoable operation. Tabs separate columns and newlines separate rows, making
+the format compatible with Excel, LibreOffice, and other spreadsheet tools.
+Clipboard access requires the platform clipboard service to be available.
 
 ### Search
 
@@ -139,16 +147,25 @@ Merged Cells are highlighted, only the top left value is shown.
 | `:previousSheet`       | `:bp`   | Switch to previous sheet                     |
 | `:deleteSheet [name]`  | `:bd`   | Delete sheet (current sheet if no name)      |
 | `:addSheet <name>`     | `:badd` | Create new sheet with given name             |
-| `:columnWidth [width]` | `:cw`   | Set column width (shows current if no width) |
+| `:autoWidth [column]`  | `:aw`   | Auto-fit one column, or all populated columns |
 | `:edit [filepath]`     | `:e`    | Open file, or reload current file if omitted |
 | `:edit! [filepath]`    | `:e!`   | Open file ignoring non-empty undo history    |
 | `:write [filename]`    | `:w`    | Save file (save as filename if provided)     |
 | `:quit`                | `:q`    | Exit program                                 |
 | `:quit!`               | `:q!`   | Exit program ignoring non-empty undo history |
 
+While entering `:b ...`, press `Tab` to complete a matching sheet name. Column
+widths are read from and written to the active Excel worksheet, so auto-fitted
+widths are preserved when the workbook is saved. `:aw` sizes every populated
+column from its longest displayed line (including calculated formula results);
+pass a column name such as `:aw C` to resize only that column.
+
 ### Undo/Redo
 
-This only applies to actions on a per sheet basis (it does not track deleting sheets or creating them).
+Undo history is maintained per sheet. Creating and deleting sheets is tracked as
+an unsaved change but is not itself undoable. Row and column deletion restores
+cell values, formulas, and styles; worksheet metadata such as custom dimensions
+or conditional formatting may still require reloading the original file.
 
 | Key      | Description        |
 | -------- | ------------------ |
@@ -159,7 +176,7 @@ This only applies to actions on a per sheet basis (it does not track deleting sh
 
 | Key      | Description           |
 | -------- | --------------------- |
-| `Ctrl+c` | Exit program          |
+| `Ctrl+c` | Exit if there are no unsaved changes |
 | `Esc`    | Return to normal mode |
 
 ## Number Prefixes
